@@ -1,0 +1,6 @@
+# TLCP display filter toolbar buttons
+#"Show in toolbar","Button Label","Filter Expression","Comment"
+"TRUE","TLCP","tlcp","国密 TLCP 流量"
+"TRUE","TLS only","tls and not tlcp","排除 TLCP 的普通 TLS"
+"TRUE","Handshake","tlcp and tls.handshake","TLCP 握手"
+"TRUE","App Data","tlcp and tls.record.content_type == 23","TLCP 应用数据"

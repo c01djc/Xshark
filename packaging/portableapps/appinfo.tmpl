@@ -1,0 +1,34 @@
+[Format]
+Type=PortableApps.comFormat
+Version=3.0
+
+[Details]
+Name=Wireshark Portable (@PORTABLEAPPS_BITS@-bit)
+AppID=@PORTABLEAPPS_NAME@
+Publisher=Wireshark.org
+Homepage=https://www.wireshark.org/
+Donate=https://wiresharkfoundation.org/donate/
+Category=Internet
+Description=Wireshark is one of the world's foremost network protocol analyzers.
+Language=Multilingual
+Trademarks=Wireshark and the fin logo are registered trademarks of the Wireshark Foundation
+
+[License]
+Shareable=true
+OpenSource=true
+Freeware=true
+CommercialUse=true
+
+[Version]
+PackageVersion=@PORTABLEAPPS_PACKAGE_VERSION@
+DisplayVersion=@PROJECT_VERSION@
+
+[Control]
+Icons=1
+Start=@PORTABLEAPPS_NAME@.exe
+
+[SpecialPaths]
+# Preserve the global plugins directory (and its per-version subfolders,
+# e.g. plugins\5.0\epan) across upgrades instead of deleting it.
+# See gitlab.com/wireshark/wireshark/-/issues/15550
+Plugins=App\Wireshark\plugins

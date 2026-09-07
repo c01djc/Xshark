@@ -1,0 +1,7 @@
+# TLCP / 国密流量着色（TLCP 配置 Profile）
+@TLCP@tlcp@[65535,45000,45000][255,255,255]
+@TLCP Handshake@tlcp and tls.handshake@[65534,50000,20000][0,0,0]
+@TLS (non-TLCP)@tls and not tlcp@[28834,57427,65533][0,0,0]
+@TCP SYN/FIN@tcp.flags & 0x02 || tcp.flags.fin == 1@[41026,41026,41026][0,0,0]
+@Bad TCP@tcp.analysis.flags && !tcp.analysis.window_update && !tcp.analysis.keep_alive && !tcp.analysis.keep_alive_ack@[0,0,0][65535,24383,24383]
+@Checksum Errors@eth.fcs.status=="Bad" || ip.checksum.status=="Bad" || tcp.checksum.status=="Bad" || udp.checksum.status=="Bad"@[0,0,0][65535,24383,24383]

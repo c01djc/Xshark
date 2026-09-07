@@ -1,0 +1,37 @@
+# TLCP / 国密分析配置（XShark · 小鲨鱼）
+#
+# 本 Profile 把国密 TLCP 作为可独立分析的对象：显示过滤用 tlcp，
+# 不必与普通 TLS/HTTPS 混在同一筛选口径，便于密评与联调。
+#
+# 建议捕获过滤器（在「捕获 → 选项 → 捕获过滤器」中选择）：
+#   tcp port 443
+#   tcp port 8443
+#   host <目标IP> and tcp port 443
+#
+# 虚拟网卡（VMware、蓝牙、本地连接* 等）默认在界面中隐藏；
+# 需要时可在网卡列表右键勾选「显示隐藏的接口」。
+#
+# 密钥日志：将浏览器/客户端 SSLKEYLOGFILE 输出路径设为下方文件，
+# 或在编辑 → 首选项 → Protocols → TLS 中修改。
+
+####### User Interface: Layout ########
+
+gui.layout_type: 3
+
+####### User Interface: Columns ########
+
+gui.column.format:
+	"No.", "%m",
+	"Time", "%Yt",
+	"Source", "%s",
+	"Destination", "%d",
+	"Protocol", "%p",
+	"Cipher", "%Cus:tls.handshake.ciphersuite:0:R",
+	"SNI", "%Cus:tls.handshake.extensions_server_name:0:R",
+	"Cert CN", "%Cus:x509sat.uTF8String:0:R",
+	"Length", "%L",
+	"Info", "%i"
+
+####### TLS / TLCP decryption ########
+
+tls.keylog_file: %APPDATA%\wireshark\tlcp-keys.log

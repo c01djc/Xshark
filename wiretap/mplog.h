@@ -1,0 +1,28 @@
+/** @file
+ *
+ * File format support for Micropross mplog files
+ * Copyright (c) 2016 by Martin Kaiser <martin@kaiser.cx>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef _MPLOG_H
+#define _MPLOG_H
+
+#include <wiretap/wtap.h>
+
+/**
+ * @brief Open a TTL Logfile for reading.
+ *
+ * @param wth Pointer to the wtap structure.
+ * @param err Error code if an error occurs.
+ * @param err_info Error information if an error occurs.
+ * @return wtap_open_return_val The result of opening the file.
+ */
+wtap_open_return_val mplog_open(wtap *wth, int *err, char **err_info);
+
+#endif /* _MPLOG_H */

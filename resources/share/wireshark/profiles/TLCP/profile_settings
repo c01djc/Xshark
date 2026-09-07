@@ -1,0 +1,4 @@
+# TLCP (GM/T 0024) analysis profile for XShark / 小鲨鱼
+# Independent tlcp filter — not mixed with generic TLS for 密评 workflows.
+# Switch to this profile when opening captures that contain TLCP traffic.
+auto_switch_filter: tlcp

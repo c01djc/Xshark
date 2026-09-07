@@ -1,0 +1,528 @@
+/* capture_opts.h
+ * Capture options (all parameters needed to do the actual capture)
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+
+/** @file
+ *
+ *  Capture options (all parameters needed to do the actual capture)
+ *
+ */
+
+#ifndef __CAPTURE_OPTS_H__
+#define __CAPTURE_OPTS_H__
+
+#include <sys/types.h>     /* for gid_t */
+
+#include <capture/capture_ifinfo.h>
+#include <wsutil/wslog.h>
+#include <wsutil/filter_files.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * Long options.
+ * We do not currently have long options corresponding to all short
+ * options; we should probably pick appropriate option names for them.
+ *
+ * NOTE:
+ * for tshark, we're using a leading - in the optstring to prevent getopt()
+ * from permuting the argv[] entries, in this case, unknown argv[] entries
+ * will be returned as parameters to a dummy-option 1.
+ * In short: we must not use 1 here, which is another reason to use
+ * values outside the range of ASCII graphic characters.
+ */
+#define LONGOPT_LIST_TSTAMP_TYPES LONGOPT_BASE_CAPTURE+1
+#define LONGOPT_SET_TSTAMP_TYPE   LONGOPT_BASE_CAPTURE+2
+#define LONGOPT_COMPRESS_TYPE     LONGOPT_BASE_CAPTURE+3
+#define LONGOPT_CAPTURE_TMPDIR    LONGOPT_BASE_CAPTURE+4
+#define LONGOPT_UPDATE_INTERVAL   LONGOPT_BASE_CAPTURE+5
+#define LONGOPT_NO_OPTIMIZE       LONGOPT_BASE_CAPTURE+6
+
+/*
+ * Options for capturing common to all capturing programs.
+ */
+#ifdef HAVE_PCAP_REMOTE
+#define OPTSTRING_A "A:"
+#else
+#define OPTSTRING_A
+#endif
+
+#define OPTSTRING_B "B:"
+
+#define OPTSTRING_I "I"
+
+// "interface" and "source" work for both Wireshark and Stratoshark flavors
+// but we only advertise the appropriate one in each application.
+#define LONGOPT_CAPTURE_COMMON \
+    {"autostop",              ws_required_argument, NULL, 'a'}, \
+    {"ring-buffer",           ws_required_argument, NULL, 'b'}, \
+    {"buffer-size",           ws_required_argument, NULL, 'B'}, \
+    {"list-interfaces",       ws_no_argument,       NULL, 'D'}, \
+    {"list-sources",          ws_no_argument,       NULL, 'D'}, \
+    {"interface",             ws_required_argument, NULL, 'i'}, \
+    {"source",                ws_required_argument, NULL, 'i'}, \
+    {"monitor-mode",          ws_no_argument,       NULL, 'I'}, \
+    {"list-data-link-types",  ws_no_argument,       NULL, 'L'}, \
+    {"no-promiscuous-mode",   ws_no_argument,       NULL, 'p'}, \
+    {"snapshot-length",       ws_required_argument, NULL, 's'}, \
+    {"linktype",              ws_required_argument, NULL, 'y'}, \
+    {"list-time-stamp-types", ws_no_argument,       NULL, LONGOPT_LIST_TSTAMP_TYPES}, \
+    {"no-optimize",           ws_no_argument,       NULL, LONGOPT_NO_OPTIMIZE}, \
+    {"time-stamp-type",       ws_required_argument, NULL, LONGOPT_SET_TSTAMP_TYPE}, \
+    {"compress-type",         ws_required_argument, NULL, LONGOPT_COMPRESS_TYPE}, \
+    {"temp-dir",              ws_required_argument, NULL, LONGOPT_CAPTURE_TMPDIR},\
+    {"update-interval",       ws_required_argument, NULL, LONGOPT_UPDATE_INTERVAL},
+
+
+#define OPTSTRING_CAPTURE_COMMON \
+    "a:" OPTSTRING_A "b:" OPTSTRING_B "c:Df:F:i:" OPTSTRING_I "Lps:y:"
+
+#ifdef HAVE_PCAP_REMOTE
+/* Type of capture source */
+typedef enum {
+    CAPTURE_IFLOCAL,        /**< Local network interface */
+    CAPTURE_IFREMOTE        /**< Remote network interface */
+} capture_source;
+
+/* Type of RPCAPD Authentication */
+typedef enum {
+    CAPTURE_AUTH_NULL,      /**< No authentication */
+    CAPTURE_AUTH_PWD        /**< User/password authentication */
+} capture_auth;
+#endif
+#ifdef HAVE_PCAP_SETSAMPLING
+/**
+ * Method of packet sampling (dropping some captured packets),
+ * may require additional integer parameter, marked here as N
+ */
+typedef enum {
+    CAPTURE_SAMP_NONE,      /**< No sampling - capture all packets */
+    CAPTURE_SAMP_BY_COUNT,  /**< Counter-based sampling -
+                                 capture 1 packet from every N */
+    CAPTURE_SAMP_BY_TIMER   /**< Timer-based sampling -
+                                 capture no more than 1 packet
+                                 in N milliseconds */
+} capture_sampling;
+#endif
+
+#ifdef HAVE_PCAP_REMOTE
+struct remote_host_info {
+    char         *remote_host;      /**< Host name or network address for remote capturing */
+    char         *remote_port;      /**< TCP port of remote RPCAP server */
+    capture_auth  auth_type;        /**< Authentication type */
+    char         *auth_username;    /**< Remote authentication parameters */
+    char         *auth_password;    /**< Remote authentication parameters */
+    bool          datatx_udp;
+    bool          nocap_rpcap;
+    bool          nocap_local;
+};
+
+struct remote_host {
+    char         *r_host;           /**< Host name or network address for remote capturing */
+    char         *remote_port;      /**< TCP port of remote RPCAP server */
+    capture_auth  auth_type;        /**< Authentication type */
+    char         *auth_username;    /**< Remote authentication parameters */
+    char         *auth_password;    /**< Remote authentication parameters */
+};
+
+typedef struct remote_options_tag {
+    capture_source src_type;
+    struct remote_host_info remote_host_opts;
+#ifdef HAVE_PCAP_SETSAMPLING
+    capture_sampling sampling_method;
+    int sampling_param;
+#endif
+} remote_options;
+#endif /* HAVE_PCAP_REMOTE */
+
+/**
+ * @brief Represents a network interface and its full capture configuration as shown in the UI.
+ */
+typedef struct interface_tag {
+    char           *name;                      /**< Internal interface name as known to the capture library. */
+    char           *display_name;              /**< Human-readable name shown in the UI. */
+    char           *addresses;                 /**< String representation of addresses assigned to this interface. */
+    int             no_addresses;              /**< Number of addresses assigned to this interface. */
+    char           *cfilter;                   /**< Capture filter string applied to this interface. */
+    int             optimize;                  /**< Whether the capture filter is compiled with optimization enabled: 1 = yes, 0 = no. */
+    GList          *links;                     /**< List of link-layer types supported by this interface. */
+    int             active_dlt;                /**< Currently selected data link type (DLT) for capture. */
+    bool            pmode;                     /**< Whether promiscuous mode is enabled. */
+    bool            has_snaplen;               /**< Whether a snapshot length limit is set. */
+    int             snaplen;                   /**< Snapshot length in bytes; only meaningful if @p has_snaplen is true. */
+    bool            local;                     /**< Whether this is a local (as opposed to remote) interface. */
+    int             buffer;                    /**< Kernel capture buffer size in megabytes. */
+    bool            monitor_mode_enabled;      /**< Whether monitor mode (rfmon) is currently enabled. */
+    bool            monitor_mode_supported;    /**< Whether the interface supports monitor mode. */
+#ifdef HAVE_PCAP_REMOTE
+    remote_options  remote_opts;               /**< Remote capture options; only present when remote pcap support is compiled in. */
+#endif
+    if_info_t       if_info;                   /**< Low-level interface information from the capture library. */
+    bool            selected;                  /**< Whether this interface is selected for capture in the UI. */
+    bool            hidden;                    /**< Whether this interface is hidden from the UI interface list. */
+    /* External capture cached data */
+    GHashTable     *external_cap_args_settings;/**< Cached argument settings for external capture (extcap) plugins. */
+    char           *timestamp_type;            /**< Requested timestamp type string for this interface. */
+} interface_t;
+
+/**
+ * @brief Represents a single link-layer type row in the interface link-type selection list.
+ */
+typedef struct link_row_tag {
+    char *name; /**< Human-readable name of the link-layer type. */
+    int   dlt;  /**< Data link type (DLT) value corresponding to this link-layer type. */
+} link_row;
+
+/**
+ * @brief Holds the full set of configuration options for a single capture interface session.
+ */
+typedef struct interface_options_tag {
+    char             *name;                  /**< Interface name supplied to libpcap/WinPcap/Npcap to identify the interface. */
+    char             *descr;                 /**< User-friendly description of the interface; may be NULL if unavailable. */
+    char             *hardware;              /**< Description of the interface hardware. */
+    char             *display_name;          /**< Name displayed in the console and title bar. */
+    char             *ifname;                /**< If non-NULL, overrides the interface name written into Interface Description Blocks (IDBs). */
+    char             *cfilter;               /**< Capture filter string applied to this interface. */
+    int               optimize;              /**< Whether the capture filter is compiled with optimization enabled: 1 = yes, 0 = no. */
+    bool              has_snaplen;           /**< Whether a snapshot length limit is set. */
+    int               snaplen;              /**< Snapshot length in bytes; only meaningful if @p has_snaplen is true. */
+    int               linktype;             /**< Selected link-layer type (DLT) for this capture session. */
+    bool              promisc_mode;          /**< Whether promiscuous mode is requested. */
+    interface_type    if_type;               /**< Interface type classification (e.g. standard, pipe, extcap). */
+    char             *extcap;               /**< Path to the extcap executable for this interface; NULL if not an extcap interface. */
+    char             *extcap_fifo;          /**< Path to the FIFO or pipe used to receive data from the extcap process. */
+    GHashTable       *extcap_args;          /**< Key-value argument table passed to the extcap executable. */
+    GPid              extcap_pid;           /**< PID of the running extcap process, or WS_INVALID_PID if not running. */
+    void             *extcap_pipedata;      /**< Internal state for reading data from the extcap pipe. */
+    GString          *extcap_stderr;        /**< Accumulated stderr output from the extcap process. */
+    unsigned          extcap_stdout_watch;  /**< GLib I/O watch ID for the extcap stdout pipe. */
+    unsigned          extcap_stderr_watch;  /**< GLib I/O watch ID for the extcap stderr pipe. */
+#ifdef _WIN32
+    HANDLE            extcap_pipe_h;        /**< Windows HANDLE for the extcap data pipe; Windows only. */
+    HANDLE            extcap_control_in_h;  /**< Windows HANDLE for the extcap control input pipe; Windows only. */
+    HANDLE            extcap_control_out_h; /**< Windows HANDLE for the extcap control output pipe; Windows only. */
+#endif
+    char             *extcap_control_in;    /**< Path to the extcap control input FIFO. */
+    char             *extcap_control_out;   /**< Path to the extcap control output FIFO. */
+    unsigned          extcap_control_in_watch;  /**< GLib I/O watch ID for the extcap control input FIFO. */
+    unsigned          extcap_control_out_watch;  /**< GLib I/O watch ID for the extcap control input FIFO. */
+    GAsyncQueue      *extcap_control_out_q; /**< Asynchronous queue to receive control out to send */
+    int               buffer_size;          /**< Capture buffer size in megabytes requested from the kernel. */
+    bool              monitor_mode;         /**< Whether monitor mode (rfmon) is requested for this interface. */
+#ifdef HAVE_PCAP_REMOTE
+    capture_source    src_type;             /**< Whether the capture source is local or remote; only with remote pcap support. */
+    char             *remote_host;          /**< Hostname or IP address of the remote capture host. */
+    char             *remote_port;          /**< Port string on which the remote capture daemon is listening. */
+    capture_auth      auth_type;            /**< Authentication method used to connect to the remote host. */
+    char             *auth_username;        /**< Username for remote capture authentication. */
+    char             *auth_password;        /**< Password for remote capture authentication. */
+    bool              datatx_udp;           /**< Whether to use UDP instead of TCP for remote capture data transfer. */
+    bool              nocap_rpcap;          /**< Whether to exclude rpcap traffic from the remote capture. */
+    bool              nocap_local;          /**< Whether to exclude local traffic from the remote capture. */
+#endif
+#ifdef HAVE_PCAP_SETSAMPLING
+    capture_sampling  sampling_method;      /**< Packet sampling method to apply (e.g. by count or by timer). */
+    int               sampling_param;       /**< Parameter value associated with the chosen sampling method. */
+#endif
+    char             *timestamp_type;       /**< Requested timestamp type as a string; NULL if using the default. */
+    int               timestamp_type_id;    /**< Numeric timestamp type passed to pcap_set_tstamp_type(); valid only when @p timestamp_type is non-NULL. */
+} interface_options;
+
+/** Capture options coming from user interface */
+typedef struct capture_options_tag {
+    /* general */
+    GList             *(*get_iface_list)(int *, char **);
+                                              /**< routine to call to get the interface list */
+    GArray            *ifaces;                /**< the interfaces to use for the
+                                                   next capture, entries are of
+                                                   type interface_options */
+    GArray            *all_ifaces;            /**< all interfaces, entries are
+                                                   of type interface_t */
+    int                ifaces_err;            /**< if all_ifaces is null, the error
+                                                   when it was fetched, if any */
+    char              *ifaces_err_info;       /**< error string for that error */
+    unsigned           num_selected;
+
+    /*
+     * Options to be applied to all interfaces.
+     *
+     * Some of these can be set from the GUI, others can't; setting
+     * the link-layer header type, for example, doesn't necessarily
+     * make sense, as different interfaces may support different sets
+     * of link-layer header types.
+     *
+     * Some that can't be set from the GUI can be set from the command
+     * line, by specifying them before any interface is specified.
+     * This includes the link-layer header type, so if somebody asks
+     * for a link-layer header type that an interface on which they're
+     * capturing doesn't support, we should report an error and fail
+     * to capture.
+     *
+     * These can be overridden per-interface.
+     */
+    interface_options  default_options;
+
+    bool               saving_to_file;        /**< true if capture is writing to a file */
+    char              *save_file;             /**< the capture file name */
+    bool               group_read_access;     /**< true is group read permission needs to be set */
+    bool               use_pcapng;            /**< true if file format is pcapng */
+    unsigned           update_interval;       /**< Time in milliseconds. How often to notify parent of new packet counts, check file duration, etc. */
+
+    /* GUI related */
+    bool               real_time_mode;        /**< Update list of packets in real time */
+    bool               show_info;             /**< show the info dialog. */
+    bool               restart;               /**< restart after closing is done */
+    char              *orig_save_file;        /**< the original capture file name (saved for a restart) */
+
+    /* multiple files (and ringbuffer) */
+    bool               multi_files_on;        /**< true if ring buffer in use */
+
+    bool               has_file_duration;     /**< true if ring duration specified */
+    double             file_duration;         /**< Switch file after n seconds */
+    bool               has_file_interval;     /**< true if ring interval specified */
+    int32_t            file_interval;         /**< Create time intervals of n seconds */
+    bool               has_file_packets;      /**< true if ring packet count is
+                                                   specified */
+    int                file_packets;          /**< Switch file after n packets */
+    bool               has_ring_num_files;    /**< true if ring num_files specified */
+    uint32_t           ring_num_files;        /**< Number of multiple buffer files */
+    bool               has_nametimenum;       /**< true if file name has date part before num part  */
+
+    /* autostop conditions */
+    bool               has_autostop_files;    /**< true if maximum number of capture files
+                                                   are specified */
+    int                autostop_files;        /**< Maximum number of capture files */
+
+    bool               has_autostop_packets;  /**< true if maximum packet count is
+                                                   specified */
+    int                autostop_packets;      /**< Maximum packet count */
+    bool               has_autostop_written_packets;  /**< true if maximum packet count is
+                                                   specified */
+    int                autostop_written_packets;      /**< Maximum packet count */
+    bool               has_autostop_filesize; /**< true if maximum capture file size
+                                                   is specified */
+    uint32_t           autostop_filesize;     /**< Maximum capture file size in kB */
+    bool               has_autostop_duration; /**< true if maximum capture duration
+                                                   is specified */
+    double             autostop_duration;     /**< Maximum capture duration */
+
+    bool               print_file_names;      /**< true if printing names of completed
+                                                   files as we close them */
+    char              *print_name_to;         /**< output file name */
+    char              *temp_dir;              /**< temporary directory path */
+
+    /* internally used (don't touch from outside) */
+    bool               output_to_pipe;        /**< save_file is a pipe (named or stdout) */
+    bool               capture_child;         /**< hidden option: Wireshark child mode */
+    bool               stop_after_extcaps;    /**< request dumpcap stop after last extcap */
+    bool               wait_for_extcap_cbs;   /**< extcaps terminated, waiting for callbacks */
+    char              *compress_type;         /**< compress type */
+    char              *closed_msg;            /**< Dumpcap capture closed message */
+    unsigned           extcap_terminate_id;   /**< extcap process termination source ID */
+    filter_list_t     *capture_filters_list;  /**< list of saved capture filters */
+} capture_options;
+
+/**
+ * Initialize the capture_options with some reasonable values, and
+ * provide a routine it can use to fetch a list of capture options
+ * if it needs it.
+ *
+ * (Getting that list might involve running dumpcap, so we don't want
+ * to waste time doing that if we don't have to.)
+ *
+ * @param capture_opts Pointer to the capture options structure to initialize.
+ * @param get_iface_list A function pointer to a routine that can be called to get the list of capture interfaces. This routine should return a GList of interface options and set the provided error parameters if it fails.
+ */
+extern void
+capture_opts_init(capture_options *capture_opts, GList *(*get_iface_list)(int *, char **));
+
+/* clean internal structures */
+
+/**
+ * @brief Clean up capture options.
+ *
+ * @param capture_opts Pointer to the capture options structure to clean up.
+ */
+extern void
+capture_opts_cleanup(capture_options *capture_opts);
+
+/**
+ * @brief Set a command line option value.
+ *
+ * @param app_env_var_prefix The prefix for the application environment variables.
+ * @param capture_opts Pointer to the capture options structure.
+ * @param opt The option to set.
+ * @param ws_optarg The argument for the option.
+ * @return 0 on success, non-zero on failure.
+ */
+extern int
+capture_opts_add_opt(const char* app_env_var_prefix, capture_options *capture_opts, int opt, const char *ws_optarg);
+
+/**
+ * @brief Log the content of capture_opts.
+ *
+ * @param domain The logging domain.
+ * @param level The logging level.
+ * @param capture_opts Pointer to the capture options structure to log.
+ */
+extern void
+capture_opts_log(const char *domain, enum ws_log_level level, capture_options *capture_opts);
+
+/**
+ * @brief Lists available file types for capture options.
+ *
+ * List supported file types for capturing. This is intentionally smaller
+ * than the list supported by libwiretap (and dumpcap isn't linked with
+ * libwiretap.)
+ *
+ */
+extern void
+capture_opts_list_file_types(void);
+
+/**
+ * @brief Bitmask flags selecting which interface capability sets to query from a capture device.
+ */
+enum caps_query {
+    CAPS_QUERY_LINK_TYPES      = 0x1, /**< Query the set of supported data link types (DLTs) */
+    CAPS_QUERY_TIMESTAMP_TYPES = 0x2  /**< Query the set of supported timestamp types */
+};
+
+/* print interface capabilities, including link layer types */
+/**
+ * @brief Prints the capabilities of a network interface.
+ *
+ * @param caps Pointer to the interface capabilities structure.
+ * @param interface_opts Pointer to the interface options structure.
+ * @param queries Number of queries related to the interface.
+ * @return The number of capabilities printed.
+ */
+extern int
+capture_opts_print_if_capabilities(if_capabilities_t *caps,
+                                   const interface_options *interface_opts,
+                                   int queries);
+
+/* print list of interfaces */
+/**
+ * @brief Prints a list of available network interfaces.
+ *
+ * @param if_list A GList containing interface options to be printed.
+ */
+extern void
+capture_opts_print_interfaces(GList *if_list);
+
+/* trim the snaplen entry */
+/**
+ * @brief Trims the snapshot length of a capture options structure to ensure it meets a minimum value.
+ *
+ * @param capture_opts Pointer to the capture options structure to be trimmed.
+ * @param snaplen_min The minimum allowed snapshot length.
+ */
+extern void
+capture_opts_trim_snaplen(capture_options *capture_opts, int snaplen_min);
+
+/* trim the ring_num_files entry */
+/**
+ * @brief Trims the number of ring buffer files to a valid range.
+ *
+ * @param capture_opts Pointer to the capture options structure.
+ */
+extern void
+capture_opts_trim_ring_num_files(capture_options *capture_opts);
+
+/* pick default interface if none was specified */
+/**
+ * @brief Set the default capture interface if necessary.
+ *
+ * @param capture_opts Pointer to the capture options structure.
+ * @param capture_device The name of the capture device to use.
+ * @return 0 if the default interface was set successfully, non-zero otherwise.
+ */
+extern int
+capture_opts_default_iface_if_necessary(capture_options *capture_opts,
+                                        const char *capture_device);
+
+/**
+ * @brief Deletes an interface from the capture options.
+ *
+ * @param capture_opts Pointer to the capture options structure.
+ * @param if_index Index of the interface to be deleted.
+ */
+extern void
+capture_opts_del_iface(capture_options *capture_opts, unsigned if_index);
+
+/**
+ * @brief Free memory allocated for interface options.
+ *
+ * @param interface_opts Pointer to the interface options structure to be freed.
+ */
+extern void
+interface_opts_free(interface_options *interface_opts);
+
+/**
+ * @brief Collects network interfaces based on the provided capture options.
+ *
+ * @param capture_opts Pointer to the capture options structure.
+ * @param if_info Pointer to the interface information structure.
+ * @return A pointer to the interface options structure created from the provided interface information.
+ */
+extern interface_options*
+interface_opts_from_if_info(capture_options *capture_opts, const if_info_t *if_info);
+
+/**
+ * @brief Collects network interfaces based on the provided capture options.
+ *
+ * @param capture_opts Pointer to the capture options structure.
+ */
+extern void
+collect_ifaces(capture_options *capture_opts);
+
+/**
+ * @brief Frees a link row element.
+ *
+ * @param elem Pointer to the link_row element to be freed.
+ */
+extern void
+capture_opts_free_link_row(void *elem);
+
+/**
+ * @brief Frees an interface_t element.
+ *
+ * @param device Pointer to the interface_t element to be freed.
+ */
+extern void
+capture_opts_free_interface_t(interface_t *device);
+
+/* Default capture buffer size in Mbytes. */
+#define DEFAULT_CAPTURE_BUFFER_SIZE 8
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __CAPTURE_OPTS_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

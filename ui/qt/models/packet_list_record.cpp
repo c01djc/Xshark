@@ -1,0 +1,275 @@
+/* packet_list_record.cpp
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#include "packet_list_record.h"
+
+#include <file.h>
+
+#include <epan/epan_dissect.h>
+#include <epan/column.h>
+#include <epan/conversation.h>
+#include <epan/color_filters.h>
+#include <epan/wmem_scopes.h>
+#include <wsutil/wmem/wmem_list.h>
+
+#include <ui/qt/utils/qt_ui_utils.h>
+
+#include <QStringList>
+
+QCache<uint32_t, QStringList> PacketListRecord::col_text_cache_(500);
+bool PacketListRecord::dissection_paused_ = false;
+QMap<int, int> PacketListRecord::cinfo_column_;
+unsigned PacketListRecord::rows_color_ver_ = 1;
+
+PacketListRecord::PacketListRecord(frame_data *frameData) :
+    fdata_(frameData),
+    lines_(1),
+    line_count_changed_(false),
+    color_ver_(0),
+    colorized_(false),
+    conv_index_(0),
+    read_failed_(false),
+    row_(0),
+    expert_severity_(0),
+    color_filters_(NULL),
+    color_filter_count_(0)
+{
+}
+
+PacketListRecord::~PacketListRecord()
+{
+    // Free the GSList but don't free the color_filter_t* (they're global)
+    g_slist_free(color_filters_);
+}
+
+void PacketListRecord::ensureColorized(capture_file *cap_file)
+{
+    // packet_list_store.c:packet_list_get_value
+    Q_ASSERT(fdata_);
+
+    if (!cap_file) {
+        return;
+    }
+
+    bool dissect_color = !colorized_ || ( color_ver_ != rows_color_ver_ );
+    if (dissect_color) {
+        /* Dissect columns only if it won't evict anything from cache */
+        bool dissect_columns = col_text_cache_.totalCost() < col_text_cache_.maxCost();
+        dissect(cap_file, dissect_columns, dissect_color);
+    }
+}
+
+// We might want to return a const char * instead. This would keep us from
+// creating excessive QByteArrays, e.g. in PacketListModel::recordLessThan.
+const QString PacketListRecord::columnString(capture_file *cap_file, int column, bool colorized)
+{
+    // packet_list_store.c:packet_list_get_value
+    Q_ASSERT(fdata_);
+
+    if (!cap_file || column < 0 || (unsigned)column >= cap_file->cinfo.num_cols) {
+        return QString();
+    }
+
+    //
+    // XXX - do we still need to check the colorization, given that we now
+    // have the ensureColorized() method to ensure that the record is
+    // properly colorized?
+    //
+    bool dissect_color = ( colorized && !colorized_ ) || ( color_ver_ != rows_color_ver_ );
+    QStringList *col_text = nullptr;
+    if (!dissect_color) {
+        col_text = col_text_cache_.object(fdata_->num);
+    }
+    if (col_text == nullptr || column >= col_text->count() || col_text->at(column).isNull()) {
+        dissect(cap_file, true, dissect_color);
+        col_text = col_text_cache_.object(fdata_->num);
+    }
+
+    return col_text ? col_text->at(column) : QString();
+}
+
+void PacketListRecord::resetColumns(column_info *cinfo)
+{
+    invalidateAllRecords();
+
+    if (!cinfo) {
+        return;
+    }
+
+    cinfo_column_.clear();
+    unsigned i, j;
+    for (i = 0, j = 0; i < cinfo->num_cols; i++) {
+        if (!col_based_on_frame_data(cinfo, i)) {
+            cinfo_column_[i] = j;
+            j++;
+        }
+    }
+}
+
+void PacketListRecord::dissect(capture_file *cap_file, bool dissect_columns, bool dissect_color)
+{
+    // packet_list_store.c:packet_list_dissect_and_cache_record
+    epan_dissect_t edt;
+    column_info *cinfo = NULL;
+    bool create_proto_tree;
+    wtap_rec rec; /* Record information */
+
+    if (!cap_file) {
+        return;
+    }
+
+    // The dissection_paused_ is used by the Lua Debugger when paused in
+    // a nested UI loop and re-entry would corrupt pause-thread state.
+    // The main UI is frozen and will dissect again when unfrozen.
+    if (dissection_paused_) {
+        return;
+    }
+
+    if (dissect_columns) {
+        cinfo = &cap_file->cinfo;
+    }
+
+    wtap_rec_init(&rec, DEFAULT_INIT_BUFFER_SIZE_2048);
+    if (read_failed_) {
+        read_failed_ = !cf_read_record_no_alert(cap_file, fdata_, &rec);
+    } else {
+        read_failed_ = !cf_read_record(cap_file, fdata_, &rec);
+    }
+
+    if (read_failed_) {
+        /*
+         * Error reading the record.
+         *
+         * Don't set the color filter for now (we might want
+         * to colorize it in some fashion to warn that the
+         * row couldn't be filled in or colorized), and
+         * set the columns to placeholder values, except
+         * for the Info column, where we'll put in an
+         * error message.
+         */
+        if (dissect_columns) {
+            col_fill_in_error(cinfo, fdata_, false, false /* fill_fd_columns */);
+
+            cacheColumnStrings(cinfo);
+        }
+        if (dissect_color) {
+            fdata_->color_filter = NULL;
+            colorized_ = true;
+        }
+        wtap_rec_cleanup(&rec);
+        return;    /* error reading the record */
+    }
+
+    /*
+     * Determine whether we need to create a protocol tree.
+     * We do if:
+     *
+     *    we're going to apply a color filter to this packet;
+     *
+     *    we're need to fill in the columns and we have custom columns
+     *    (which require field values, which currently requires that
+     *    we build a protocol tree).
+     *
+     *    XXX - field extractors?  (Not done for GTK+....)
+     */
+    create_proto_tree = ((dissect_color && color_filters_used()) ||
+                         (dissect_columns && (have_custom_cols(cinfo) ||
+                                              have_field_extractors())));
+
+    epan_dissect_init(&edt, cap_file->epan,
+                      create_proto_tree,
+                      false /* proto_tree_visible */);
+
+    /* Re-color when the coloring rules are changed via the UI. */
+    if (dissect_color) {
+        color_filters_prime_edt(&edt);
+        fdata_->need_colorize = 1;
+    }
+    if (dissect_columns)
+        col_custom_prime_edt(&edt, cinfo);
+
+    /*
+     * XXX - need to catch an OutOfMemoryError exception and
+     * attempt to recover from it.
+     */
+    epan_dissect_run(&edt, cap_file->cd_t, &rec, fdata_, cinfo);
+    expert_severity_ = edt.pi.expert_severity;
+
+    if (dissect_columns) {
+        /* "Stringify" non frame_data vals */
+        epan_dissect_fill_in_columns(&edt, false, false /* fill_fd_columns */);
+        cacheColumnStrings(cinfo);
+    }
+
+    if (dissect_color) {
+        colorized_ = true;
+        color_ver_ = rows_color_ver_;
+
+        // Free previous color list
+        g_slist_free(color_filters_);
+        color_filters_ = NULL;
+        color_filter_count_ = 0;
+
+        // Get all matching colors if any multi-color feature is enabled
+        if (prefs.gui_packet_list_multi_color_mode != PACKET_LIST_MULTI_COLOR_MODE_OFF ||
+            prefs.gui_packet_list_multi_color_details) {
+            wmem_list_t *wm_matches = NULL;
+            fdata_->color_filter = color_filters_colorize_packet_all(&edt, wmem_file_scope(), &wm_matches);
+            if (wm_matches) {
+                for (wmem_list_frame_t *lf = wmem_list_head(wm_matches); lf != NULL; lf = wmem_list_frame_next(lf)) {
+                    color_filters_ = g_slist_append(color_filters_, wmem_list_frame_data(lf));
+                    color_filter_count_++;
+                }
+                wmem_destroy_list(wm_matches);
+            }
+        } else {
+            color_filter_count_ = fdata_->color_filter ? 1 : 0;
+        }
+    }
+
+    struct conversation * conv = find_conversation_pinfo_ro(&edt.pi, 0);
+
+    conv_index_ = ! conv ? 0 : conv->conv_index;
+
+    epan_dissect_cleanup(&edt);
+    wtap_rec_cleanup(&rec);
+}
+
+void PacketListRecord::cacheColumnStrings(column_info *cinfo)
+{
+    // packet_list_store.c:packet_list_change_record(PacketList *packet_list, PacketListRecord *record, int col, column_info *cinfo)
+    if (!cinfo) {
+        return;
+    }
+
+    QStringList *col_text = new QStringList();
+
+    lines_ = 1;
+    line_count_changed_ = false;
+
+    for (unsigned column = 0; column < cinfo->num_cols; ++column) {
+        int col_lines = 1;
+
+        QString col_str;
+        int text_col = cinfo_column_.value(column, -1);
+        if (text_col < 0) {
+            col_fill_in_frame_data(fdata_, cinfo, column, false);
+        }
+
+        col_str = QString(get_column_text(cinfo, column));
+        *col_text << col_str;
+        col_lines = static_cast<int>(col_str.count('\n'));
+        if (col_lines > lines_) {
+            lines_ = col_lines;
+            line_count_changed_ = true;
+        }
+    }
+
+    col_text_cache_.insert(fdata_->num, col_text);
+}

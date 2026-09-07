@@ -1,0 +1,2 @@
+# Marker for the XShark (小鲨鱼) GM/T TLCP customized build.
+# CMake uses this to enable GM_WIRESHARK_BUILD and set VERSION_FLAVOR to "小鲨鱼".

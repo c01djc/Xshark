@@ -1,0 +1,366 @@
+include::attributes.adoc[]
+:stylesheet: ws.css
+:linkcss:
+:copycss: {css_dir}/{stylesheet}
+
+= Wireshark {wireshark-version} Release Notes
+// Asciidoctor Syntax Quick Reference:
+// https://asciidoctor.org/docs/asciidoc-syntax-quick-reference/
+
+This is an experimental release intended to test new features for Wireshark 5.0.
+
+== What is Wireshark?
+
+Wireshark is the world’s most popular network protocol analyzer.
+It is used for troubleshooting, analysis, development and education.
+
+Wireshark is hosted by the Wireshark Foundation, a nonprofit which promotes protocol analysis education.
+Wireshark and the foundation depend on your contributions in order to do their work.
+If you or your organization would like to contribute or become a sponsor, please visit https://wiresharkfoundation.org[wiresharkfoundation.org].
+
+== What’s New
+
+// Add a summary of **major** changes here.
+// Add other changes to "New and Updated Features" below.
+
+The following changes have been made since version 4.7.2:
+
+* The minimum supported Windows version is Windows 10 21H2 (build 19044) or
+  Windows Server 2022.
+* Display filter operators' English forms like "and" and "or" are case-insensitive.
+* Display filter string literals can be surrounded by appropriate pairs of
+  directional ("smart" or "curly") double quotes instead of straight double
+  quotes.
+* The Export Packet Dissections CSV output is UTF-8 CSV (with optional BOM) by
+  default; the previous format which escapes non-ASCII characters is still
+  available.
+* The Export Packet Dissections C Arrays output gained an option to add an index
+  array for the arrays of data sources. Also, there is an option to omit secondary
+  data sources like reassembled data or decrypted data. wsbuglink:19616[].
+
+The following changes have been made since version 4.7.1:
+
+* The Follow Stream window is more responsive and has more filtering options.
+
+* HTTP/3 improvements:
+  Reassembly is implemented.
+  Decompression is implemented for gzip/deflate, brotli, and zstd.
+  Media type dissectors are called for the Content-Type.
+  Follow Stream is implemented. wsbuglink:20610[].
+  Export Objects is implemented.
+  Request/response tracking is implemented.
+
+The following changes have been made since version 4.7.0:
+
+The following issues have been fixed:
+* Wireshark appears in German where Systemlanguage is Dutch. wsbuglink:20347[].
+* If you double-click an interface in the welcome screen interface list, and have typed nothing in the capture filter box, the system reports an invalid capture filter. wsbuglink:21303[].
+* Qt: Appearance mode is stored per-profile while theme name is global — theme flips on profile switch. wsbuglink:21311[].
+* Qt: 'Recent filters' arrow button gives no hover/pressed feedback. wsbuglink:21322[].
+* Qt: Hidden interfaces (Welcome page right-click) not persisted across profile switch or restart. wsbuglink:21325[].
+* Qt: Preferences dialog left category tree cannot be resized (labels truncated, only horizontal scrollbar) wsbuglink:21327[].
+* Qt: Make theme preview resemble a real Wireshark window (mini packet-list mockup) wsbuglink:21329[].
+* stratoshark -D lists a bunch of *network* capture devices. wsbuglink:21332[].
+
+The following changes have been made since version 4.6.0:
+
+* Welcome Page Overhaul
+  The welcome page has been redesigned to be more informative and easier to navigate. It now highlights the learning sections better and includes a new sidebar with tips and tricks for using Wireshark effectively. The welcome page is now also more accessible, with improved keyboard navigation and screen reader support.
+
+* Lua Debugger
+  A built-in Lua script debugger has been added. It supports breakpoints, single-stepping, variable inspection, expression evaluation, and stack traces. The debugger can be opened from the menu:Tools[Lua Debugger] menu.
+
+* Themes
+  Wireshark now drives the colors used throughout the GUI from a single theme instead of many individual color preferences. The renamed menu:Appearance[Theme and Font] preferences page lets you pick a theme, switch between Light, Dark, and System appearance, set the packet pane font, and preview the result on a mockup of a capture window. A built-in default theme ships with Wireshark, and additional themes can be installed as JSONC (JSON with Comments) files. The previous per-color settings (marked and ignored packets, "Follow Stream" client and server text, display filter validity, and the selected packet) are now provided by the active theme.
+  Personal themes can now be dropped as single `.jsonc` files into _$HOME/.local/lib/wireshark/themes_ (Unix) or _%APPDATA%\Wireshark\themes_ (Windows); the filename becomes the theme's name in the dropdown. The exact path is shown in the About dialog's _Folders_ tab.
+  On first launch after the upgrade, Wireshark checks the Default profile's preferences for customized values of the removed per-color settings. If any are found, a personal theme named _Personal (Migrated)_ is created automatically in the personal themes directory, the legacy keys are removed from the Default profile's preferences file, and the theme is activated so the original visual customizations are preserved. The migration runs once: the generated _personal.jsonc_ can be edited, renamed, or deleted by hand at any time.
+  The welcome page section headers ("Open", "Capture", "Learn") and the filter validity tints have been restored to the historical Classic look (Tango sky_blue brand, saturated GTK-era dark green / dark red filter backgrounds).
+
+* The Default profile now has additional column "Delta", showing the delta time from the previous displayed packet.
+
+* Name Resolution
+  SMI paths are now searched recursively. This makes it easier to use MIBs provided by libsmi.
+
+Many other improvements have been made.
+See the “New and Updated Features” section below for more details.
+
+//=== Bug Fixes
+
+* wsbuglink:21115[Wireshark Profile Import RCE via Zip-Slip Vulnerability ] - A critical issue that caused Wireshark to crash when importing malformed zip files has been fixed. This bug was reported by Joohyun Park, Hyuk Kwon, Yonghwa Lee, Taisic Yun, Sangjun Song (Theori), with Xint and has been resolved in this release.
+
+//The following bugs have been fixed:
+//* wsbuglink:5000[]
+//* wsbuglink:6000[Wireshark bug]
+//* cveidlink:2014-2486[]
+//* Wireshark keeps waving its finger about an inch from you and saying "I'm not touching you."
+
+=== New and Updated Features
+
+The following features are either new or have been significantly updated since version 4.6.0:
+
+* New IMSI List dialog (menu:Telephony[IMSI List]) scans all packets in a capture and lists
+  every unique IMSI with packet count, first/last frame, and protocols.
+  Double-click an IMSI to apply a display filter for that subscriber.
+  Multi-select and "Prepare Filter" combines multiple IMSIs.
+
+* New `tshark -z imsi` statistics lists all unique IMSIs found in a capture
+  with packet counts, first/last frame numbers, and protocols.
+  A new "imsi" tap is registered by the E.212 dissector.
+
+* UDX conversations and endpoints are now listed per stream, in
+  menu:Statistics[Conversations] and menu:Statistics[Endpoints] as well as
+  `tshark -z conv,udx` and `tshark -z endpoints,udx`.
+  Several UDX streams can share one UDP socket pair, which the UDP tables count
+  as a single conversation.
+  A new "udx" tap is registered by the UDX dissector.
+
+* New compact JSON output option omits indentation and whitespace,
+  significantly reducing output size and improving performance.
+  Available as `tshark --json-compact` (with `-T json` or `-T jsonraw`)
+  and as a "Compact (no indentation)" checkbox in the GUI JSON export dialog.
+
+* The Windows installers now ship with Npcap 1.88.
+  They previously shipped with Npcap 1.83.
+
+* The Windows and macOS installers now ship with Qt 6.11.1.
+  They previously shipped with Qt 6.9.3.
+
+// XXX This should just describe what changed.
+// * The capture and display filter fields have a refreshed, consistent look and
+//   feel. As you type, the field colors itself to show at a glance whether the
+//   filter is valid, invalid, or uses deprecated syntax, and that feedback now
+//   appears immediately in place. Each field carries the same set of in-line
+//   buttons — a bookmark to save and manage your filters, a clear button, an
+//   apply button, and a drop-down listing your recently used filters — and as you
+//   type it suggests completions drawn from field names together with your recent
+//   and saved filters. Recent display filters are now reached from that drop-down
+//   rather than from a combo box. The colors follow the active theme and adapt to
+//   the Light and Dark appearances. (When a capture filter names a host, the field
+//   may pause briefly while the name is resolved.)
+
+* Zooming (menu:View[Zoom In] / menu:View[Zoom Out]) now scales the whole window, including the capture and display filter fields and other window elements.
+  Previously only the text size in the three main window panes (packet list, details, and bytes) changed.
+  The new behavior should be much more useful for demos and presentations.
+
+* The keyboard shortcuts dialog (menu:About Wireshark[Keyboard Shortcuts]) has been moved out of of the About dialog to the menu:View[Internals,Keyboard Shortcuts] menu and now has a button to print the list of keyboard shortcuts to an HTML file.
+
+* The application icons have been updated and refreshed.
+  The macOS icon now supports Liquid Glass and is sized according to Apple's specifications on older macOS versions.
+  wsbuglink:18131[]
+
+* The RTP Player now supports AMR-WB and 24-bit linear encoded audio.
+
+* The protocol dissection API has been updated to more safely handle packet data offsets and lengths.
+  See the <<Major API Changes>> section below for details.
+
+* The welcome screen's interface activity sparklines now keep their history for the whole session.
+  Previously the sparklines, and the activity-first ordering of the interface list, were reset whenever you
+  started or stopped a capture or returned to the welcome screen, so the list re-shuffled each time.
+  Now the history persists, the ordering stays stable, and a break in a sparkline marks the interval during
+  which a capture was running (interface statistics are not sampled while capturing).
+  When an interface is dropping packets, the drops are shown as a separate line.
+  The Capture Options dialog's interface list now shares the same statistics, so its sparklines match the
+  welcome screen exactly, including the capture-interval gap and the dropped-packet line.
+  wsbuglink:21318[]
+
+* Interfaces hidden from the welcome screen's right-click menu are now remembered
+  across profile switches and application restarts. wsbuglink:21325[]
+
+* Editcap has a new `--sctp-split` option that splits SCTP packets containing
+  multiple bundled DATA chunks into individual packets, one per DATA chunk.
+  Each split packet includes a comment indicating its original frame number.
+
+* Sharkd supports Unix domain sockets where supported on Windows, which includes
+  all Windows versions supported by Wireshark 4.6 and later. (Windows 10 versions
+  1803 and later, including Windows Server 2019 and later, all support Unix domain
+  sockets.)
+
+=== Removed Features and Support
+
+Dumpcap's TCP@host:port interface has been removed.
+
+Sharkd only supports binding to a loopback IPv4 or IPv6 address when listening
+on a TCP socket. (TCP sockets are only available by default on Windows systems,
+and are deprecated, since UNIX domain sockets are now supported. IPv6 support
+is new.) Sharkd now rejects connecting to a Linux abstract domain socket from
+peer processes with effective UID other than that of the sharkd process.
+
+The individual color preferences under menu:Appearance[] (marked and ignored packets, "Follow Stream" client and server text, display filter validity, and the selected packet) have been removed. These colors are now provided by the selected theme; see the "What's New" section above.
+
+Building with Qt 5 is no longer supported.
+
+// === Removed Dissectors
+
+
+=== New File Format Decoding Support
+
+[commaize]
+--
+Bachmann M-Module
+--
+
+=== New Protocol Support
+
+// Add one protocol per line between the -- delimiters in the format
+// “Full protocol name (Abbreviation)”
+// git log --oneline --diff-filter=A --stat v4.7.2rc0.. epan/dissectors plugins
+[commaize]
+--
+Apple Darwin Metadata
+Axia Livewire
+Controller Interface Transport Protocol (CITP)
+DCERPC SCARD_PACK
+DECT NR+
+ESUN
+Generic UDP Encapsulation (GUE)
+JSON Dictionary
+Linux mac80211_hwsim Netlink
+Linux Open vSwitch Netlink (OVS)
+MCData
+MCTP over SMBus/I2C
+MIDI System Exclusive DigiTech
+Mikrotik RoMON
+Multicast Router Discovery (MRD)
+MySQL X Protocol (MySQLX)
+NATS
+NMEA 2000
+Object Transform Protocol (OTP)
+Perforce P4RPC
+PosiStageNet (PSN)
+PROFINET SXP (PN-SXP)
+Qualcomm Diagnostic (QCDIAG)
+TrueConf Protocol (TrueConf)
+RDP Conctrl virtual channel Protocol (CONCTRL)
+RDP Video Capture Virtual Channel Extension (RDPECAM)
+Real-Time Tracking Protocol (RTTrP)
+TrueConf
+UDX
+Ultra Ethernet Transport (UET)
+XGT
+ZigBee ZCL Generic Tunnel
+--
+
+=== Updated Protocol Support
+
+Too many protocol updates have been made to list them all here.
+
+Of particular note, "ike" is now preferred to "isakmp" for filtering the
+Internet Key Exchange (IKE) protocol and its fields (both IKEv1 and IKEv2),
+including fields primarily associated with RFC 2408, Internet Security
+Association and Key Management Protocol (ISAKMP) though "isakmp" remains as
+an alias for the protocol and all its fields.
+
+== New and Updated Capture File Support
+
+[commaize]
+--
+--
+
+=== New and Updated Capture Interface support
+
+* `etwdump` now supports new capture providers, among which:
+  * un-encrypted LDAP messages
+  * un-encrypted SMB client/server messages
+  * un-encrypted HTTPS messages (from both WinInet and WinHTTP)
+  * raw HCI events (similar to Microsoft's btvs.exe)
+
+* `etwdump` now supports capture options and has a much better support of
+  undecipherable messages.
+
+// [commaize]
+// --
+// --
+
+//=== New and Updated Codec support
+
+//_Non-empty section placeholder._
+
+=== Major API Changes
+
+The tvb new_subset and tvb length_remaining routines now take unsigned offset
+and length arguments. Negative offsets, indicating an offset relative to the
+end of the _captured_ length of the buffer (not reported) are no longer
+permitted, nor is a length of -1 meaning "to the end of the buffer." For
+the latter, use tvb_new_subset_remaining instead. Internally, tvbuffer lengths
+have long been unsigned; this change should simplify dealing with 32-bit
+unsigned length fields and checking for offsets overflowing.
+
+tvb find_line_end, tvb_find_uint8, tvb_find_uint16 and tvb_ws_mempbrk_pattern_uint8
+has been changed in a similar fashion. They now return a boolean, true
+if found.
+
+Functions tvb_get_string_uint[64] were added that can retrieve an unsigned
+integer encoded as an ASCII-like string from packet data similar to strtoul
+but without string copying or otherwise ensuring NUL termination.
+
+Linking with the Heimdal Kerberos library is now deprecated, and support will likely be removed in a future release.
+Linking with the MIT Kerberos library is still supported.
+
+=== Plugin Development Changes
+
+The list of installed dissector header files has been reduced and is now restricted to ones that contain the following:
+- Functions marked WS_DLL_PUBLIC
+- Structs whose names contain "tap_"
+- The string "PUBLIC_HEADER"
+
+On UN*X systems (excluding macOS when running from an app bundle, as
+with the official installer) extcap binaries are now searched for under
+the libexec directory by default, e.g., `/usr/libexec/wireshark/extcap`
+instead of `/usr/lib64/wireshark/extcap` or similar. This is the customary
+place for helper binaries, which as opposed to libraries do not need
+multiarch support. The location can be overridden via the environment
+variable WIRESHARK_EXTCAP_DIR. The extcap binaries shipped with Wireshark
+are installed in the new location, but third party extcaps may need
+packaging changes. This change was effective in version 4.6.0, but was not
+explicitly noted in the release notes previously. Note that some distributions
+do not use a libexec directory, such as Alpine Linux, which does not have
+multilib support. On such systems extcap binaries should be in the same
+location as before.
+
+== Getting Wireshark
+
+Wireshark source code and installation packages are available from
+https://www.wireshark.org/download.html.
+
+=== Vendor-supplied Packages
+
+Most Linux and Unix vendors supply their own Wireshark packages.
+You can usually install or upgrade Wireshark using the package management system specific to that platform.
+A list of third-party packages can be found on the
+https://www.wireshark.org/download.html[download page]
+on the Wireshark web site.
+
+== File Locations
+
+Wireshark and TShark look in several different locations for preference files, plugins, SNMP MIBS, and RADIUS dictionaries.
+These locations vary from platform to platform.
+You can use menu:Help[About Wireshark,Folders] or `tshark -G folders` to find the default locations on your system.
+
+== Getting Help
+
+The User’s Guide, manual pages and various other documentation can be found at
+https://www.wireshark.org/docs/
+
+Community support is available on
+https://ask.wireshark.org/[Wireshark’s Q&A site]
+and on the wireshark-users mailing list.
+Subscription information and archives for all of Wireshark’s mailing lists can be found on https://lists.wireshark.org/lists/[the mailing list site].
+
+Bugs and feature requests can be reported on
+https://gitlab.com/wireshark/wireshark/-/issues[the issue tracker].
+
+You can learn protocol analysis and meet Wireshark’s developers at
+https://sharkfest.wireshark.org[SharkFest].
+
+Official Wireshark training and certification are available from
+https://www.wireshark.org/certifications[the Wireshark Foundation].
+
+== How You Can Help
+
+The Wireshark Foundation helps as many people as possible understand their networks as much as possible.
+You can find out more and donate at https://wiresharkfoundation.org[wiresharkfoundation.org].
+
+== Frequently Asked Questions
+
+A complete FAQ is available on the
+https://www.wireshark.org/faq.html[Wireshark web site].

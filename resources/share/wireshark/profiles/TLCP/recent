@@ -1,0 +1,7 @@
+# TLCP profile recent settings (shipped defaults)
+#
+# Display filter history — opening a capture in this profile applies tlcp.
+
+######## Recent display filters (latest last), cannot be altered through command line ########
+
+recent.display_filter: tlcp
