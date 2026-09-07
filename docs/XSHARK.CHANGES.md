@@ -2,6 +2,7 @@
 
 **产品**：XShark / 小鲨鱼 · 国密协议版  
 **产品版本**：V1.0.0  
+**项目主页**：https://github.com/c01djc/xshark  
 **开源许可**：**GNU GPL v2 or later**（与上游 Wireshark 相同，见仓库根目录 `COPYING`）  
 **性质**：基于 Wireshark 的衍生作品（derived work），非官方发行版
 

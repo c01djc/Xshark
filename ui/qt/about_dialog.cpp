@@ -264,6 +264,14 @@ AboutDialog::AboutDialog(QWidget *parent) :
     QFile f_acknowledgements;
     QFile f_license;
 
+#ifdef GM_WIRESHARK_BUILD
+    setWindowTitle(tr("关于 XShark（小鲨鱼）"));
+    ui->tabWidget->setTabText(ui->tabWidget->indexOf(ui->tab_wireshark),
+                              QStringLiteral("XShark"));
+    ui->label_title->setText(tr("<span style=\"font-size:x-large; font-weight:bold;\">"
+                                "XShark（小鲨鱼）· 国密协议版</span>"));
+#endif
+
     /* Wireshark tab */
     updateWiresharkText();
     connect(ThemeManager::instance(), &ThemeManager::themeChanged,
@@ -454,24 +462,55 @@ void AboutDialog::updateWiresharkText()
 
     QString message = ColorUtils::themeLinkStyle();
 
-    /* Convert newlines in the version strings to html <br/>*/
-    //comp_info_str = html_escape(comp_info_str);
-    //comp_info_str.replace("\n", "<br/>");
-    //runtime_info_str = html_escape(runtime_info_str);
-    //runtime_info_str.replace("\n", "<br/>");
-    /* Construct the message string */
+#ifdef GM_WIRESHARK_BUILD
+    /* Prefer a stable product homepage; fall back if the repo name differs. */
+    const QString project_url = QStringLiteral("https://github.com/c01djc/xshark");
+
+    message += QStringLiteral(
+        "<p><b>XShark（小鲨鱼）V1.0.0 · 国密协议版</b></p>\n"
+        "<p>本软件是基于 <a href=\"https://www.wireshark.org\">Wireshark</a> 的开源定制版，"
+        "面向国密 TLCP（GM/T 0024）与密评场景。<b>不是</b> Wireshark Foundation 官方产品。</p>\n"
+        "<p><b>与官方 Wireshark 的主要区别：</b></p>\n"
+        "<ul>"
+        "<li>提供独立显示过滤器 <code>tlcp</code>，国密流量可单独筛选，不必与普通 TLS/HTTPS 混在一起。</li>"
+        "<li>预置 TLCP 配置 Profile（自动切换、工具栏、着色、Cipher/SNI/证书列等），便于密评人员直接上手。</li>"
+        "<li>欢迎页与主题按「小鲨鱼」品牌定制；默认关闭官方推广侧栏与官方自动更新通道。</li>"
+        "</ul>\n"
+        "<p><b>项目主页（GitHub）</b>：<a href=\"%1\">%1</a><br/>"
+        "改动说明：仓库内 <code>docs/XSHARK.CHANGES.md</code> · README：仓库根目录 <code>README.md</code></p>\n"
+        "<p><b>开源许可</b>：GNU General Public License version 2 or later（与上游 Wireshark 相同，见「许可」页与 <code>COPYING</code>）。"
+        "分发二进制时须提供对应源码；请保留版权声明，并以 XShark / 小鲨鱼 作为产品名。</p>\n"
+        "<hr/>\n"
+        "<p><b>上游基础版本</b> %2.</p>\n")
+        .arg(project_url, html_escape(vcs_version_info_str));
+#else
     message += "<p>Version " + html_escape(vcs_version_info_str) + ".</p>\n";
+#endif
     message += "<p>" + html_escape(copyright_info_str) + "</p>\n";
     message += "<p>" + html_escape(license_info_str) + "</p>\n";
     message += "<pre>" + html_escape(comp_info_str) + "</pre>\n";
     message += "<pre>" + html_escape(runtime_info_str) + "</pre>\n";
+#ifdef GM_WIRESHARK_BUILD
+    message += QStringLiteral(
+        "<p>更多信息见项目主页 <a href=\"https://github.com/c01djc/xshark\">github.com/c01djc/xshark</a>，"
+        "以及上游文档 <a href=\"https://www.wireshark.org\">www.wireshark.org</a>。</p>\n");
+#else
     message += "<p>Check the man page and <a href=https://www.wireshark.org>www.wireshark.org</a> "
                "for more information.</p>\n";
+#endif
     ui->pte_wireshark->setHtml(message);
 
     /* Save the info for the clipboard copy */
     clipboardInfo = "";
+#ifdef GM_WIRESHARK_BUILD
+    clipboardInfo += "XShark (小鲨鱼) V1.0.0 · 国密协议版\n";
+    clipboardInfo += "Project: https://github.com/c01djc/xshark\n";
+    clipboardInfo += "Based on Wireshark (not an official Wireshark Foundation release).\n";
+    clipboardInfo += "License: GPL-2.0-or-later (see COPYING).\n";
+    clipboardInfo += "Upstream: " + vcs_version_info_str + "\n\n";
+#else
     clipboardInfo += "Version " + vcs_version_info_str + ".\n\n";
+#endif
     /* XXX: GCC 12.1 has a bogus stringop-overread warning using the Qt
      * conversions from QByteArray to QString at -O2 and higher due to
      * computing a branch that will never be taken.

@@ -4,7 +4,8 @@
 
 - **产品版本**：V1.0.0  
 - **定位**：国密协议版（独立 `tlcp` 过滤，不与普通 TLS 混筛）  
-- **开源许可**：**GNU General Public License v2 or later**（与上游 Wireshark 一致，见根目录 [`COPYING`](COPYING)）
+- **开源许可**：**GNU General Public License v2 or later**（与上游 Wireshark 一致，见根目录 [`COPYING`](COPYING)）  
+- **项目主页**：https://github.com/c01djc/xshark  
 
 > 本项目是 Wireshark 的衍生作品（fork / derived work），**不是** Wireshark Foundation 官方产品。  
 > Upstream：https://www.wireshark.org / https://gitlab.com/wireshark/wireshark
