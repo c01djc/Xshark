@@ -1,6 +1,9 @@
 name: Build Windows
 
-on: [push]
+# Disabled automatic CI for the XShark fork (local Windows builds / manual releases).
+# Re-enable with: on: [push]
+on:
+  workflow_dispatch:
 
 jobs:
   windows:

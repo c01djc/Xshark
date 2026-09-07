@@ -214,3 +214,5 @@ resources/icons/_upstream_*
 resources/icons/_orig_*
 resources/icons/test_multi.ico
 resources/icons/gm-wireshark.ico
+
+dist/
