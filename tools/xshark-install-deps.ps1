@@ -1,25 +1,41 @@
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-  XShark 依赖检测与安装：VC++ 运行库、Npcap。
-.DESCRIPTION
-  - 已安装则跳过；缺失则自动安装（需管理员权限）。
-  - VC++：使用包内 vc_redist.x64.exe（/install /quiet /norestart）。
-  - Npcap：不随包分发（授权限制），缺失时从官方 GitHub Release 下载安装包再执行。
-#>
 param(
   [switch]$Silent,
   [switch]$SkipNpcap,
   [switch]$SkipVcRedist,
-  [switch]$LaunchAfter
+  [switch]$LaunchAfter,
+  [switch]$NoPause,
+  [string]$LogFile
 )
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $Root
+if ([string]::IsNullOrWhiteSpace($Root)) { $Root = (Get-Location).Path }
+Set-Location -LiteralPath $Root
 
-function Write-Info([string]$msg) {
-  if (-not $Silent) { Write-Host $msg }
+if ([string]::IsNullOrWhiteSpace($LogFile)) {
+  $LogFile = Join-Path $Root 'xshark-deps.log'
+}
+
+$script:ExitCode = 0
+
+function Write-Log {
+  param(
+    [Parameter(Mandatory = $true)][string]$Message,
+    [ValidateSet('INFO', 'WARN', 'ERROR', 'OK')][string]$Level = 'INFO'
+  )
+  $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
+  try { Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8 } catch {}
+  if (-not $Silent) {
+    switch ($Level) {
+      'ERROR' { Write-Host $line -ForegroundColor Red }
+      'WARN'  { Write-Host $line -ForegroundColor Yellow }
+      'OK'    { Write-Host $line -ForegroundColor Green }
+      default { Write-Host $line }
+    }
+  } elseif ($Level -eq 'ERROR') {
+    Write-Host $line -ForegroundColor Red
+  }
 }
 
 function Test-IsAdmin {
@@ -28,20 +44,7 @@ function Test-IsAdmin {
   return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Ensure-Admin {
-  if (Test-IsAdmin) { return }
-  Write-Info '需要管理员权限以安装驱动/运行库，正在请求提升…'
-  $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
-  if ($Silent) { $args += '-Silent' }
-  if ($SkipNpcap) { $args += '-SkipNpcap' }
-  if ($SkipVcRedist) { $args += '-SkipVcRedist' }
-  if ($LaunchAfter) { $args += '-LaunchAfter' }
-  Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $args -Wait
-  exit $LASTEXITCODE
-}
-
 function Test-VcRedistInstalled {
-  # VS 2015-2022 x64 runtime — same family as modern Wireshark builds
   $keys = @(
     'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64'
@@ -52,27 +55,8 @@ function Test-VcRedistInstalled {
       if ($installed -eq 1) { return $true }
     }
   }
-  # Fallback: core DLL beside System32
   return (Test-Path "$env:SystemRoot\System32\vcruntime140.dll") -and
          (Test-Path "$env:SystemRoot\System32\msvcp140.dll")
-}
-
-function Install-VcRedist {
-  $exe = Join-Path $Root 'vc_redist.x64.exe'
-  if (-not (Test-Path $exe)) {
-    Write-Info "未找到包内 vc_redist.x64.exe，跳过 VC 运行库安装。"
-    return $false
-  }
-  if (Test-VcRedistInstalled) {
-    Write-Info 'VC++ 运行库已安装，跳过。'
-    return $true
-  }
-  Write-Info '正在安装 VC++ 运行库（vc_redist.x64.exe）…'
-  $p = Start-Process -FilePath $exe -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru
-  Write-Info ("vc_redist 退出码: {0}" -f $p.ExitCode)
-  # 0 = success, 1638 = newer already installed, 3010 = reboot required
-  if ($p.ExitCode -in 0, 1638, 3010) { return $true }
-  return $false
 }
 
 function Test-NpcapInstalled {
@@ -83,94 +67,227 @@ function Test-NpcapInstalled {
   return $false
 }
 
+function Install-VcRedist {
+  $exe = Join-Path $Root 'vc_redist.x64.exe'
+  if (-not (Test-Path -LiteralPath $exe)) {
+    Write-Log "vc_redist.x64.exe not found: $exe" 'WARN'
+    return $false
+  }
+  if (Test-VcRedistInstalled) {
+    Write-Log 'VC++ runtime already installed.' 'OK'
+    return $true
+  }
+  Write-Log "Installing VC++ runtime: $exe"
+  $p = Start-Process -FilePath $exe -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+  Write-Log ("vc_redist exit code: {0}" -f $p.ExitCode)
+  if ($p.ExitCode -in 0, 1638, 3010) { return $true }
+  Write-Log ("VC++ install failed, exit={0}" -f $p.ExitCode) 'ERROR'
+  return $false
+}
+
 function Get-LatestNpcapInstallerUrl {
-  # Prefer GitHub API (stable); fall back to known redirect pattern if needed.
   try {
     $headers = @{
       'User-Agent' = 'XShark-dependency-installer'
       'Accept'     = 'application/vnd.github+json'
     }
+    Write-Log 'Querying latest Npcap release...'
     $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/nmap/npcap/releases/latest' -Headers $headers -TimeoutSec 60
     $asset = $rel.assets | Where-Object { $_.name -match '^npcap-.*\.exe$' -and $_.name -notmatch 'oem' } | Select-Object -First 1
     if ($asset) {
+      Write-Log ("Npcap asset: {0}" -f $asset.name)
       return @{ Url = $asset.browser_download_url; Name = $asset.name }
     }
+    Write-Log 'No Npcap exe asset found.' 'WARN'
   } catch {
-    Write-Info ("查询 Npcap 版本失败: {0}" -f $_.Exception.Message)
+    Write-Log ("Npcap version query failed: {0}" -f $_.Exception.Message) 'WARN'
   }
-  # Fallback: documented current release page still hosts installers; user can also visit npcap.com
   return $null
 }
 
 function Install-Npcap {
   if (Test-NpcapInstalled) {
-    Write-Info 'Npcap 已安装，跳过。'
+    Write-Log 'Npcap already installed.' 'OK'
     return $true
   }
 
   $info = Get-LatestNpcapInstallerUrl
   if (-not $info) {
-    Write-Info '无法自动获取 Npcap 下载地址。请手动打开 https://npcap.com/ 下载安装。'
-    if (-not $Silent) {
-      Start-Process 'https://npcap.com/#download'
-    }
+    Write-Log 'Cannot resolve Npcap download URL. Open https://npcap.com/' 'ERROR'
+    if (-not $Silent) { try { Start-Process 'https://npcap.com/#download' } catch {} }
     return $false
   }
 
   $dest = Join-Path $env:TEMP $info.Name
-  Write-Info ("正在下载 Npcap: {0}" -f $info.Name)
+  Write-Log ("Downloading Npcap: {0}" -f $info.Url)
   try {
     Invoke-WebRequest -Uri $info.Url -OutFile $dest -UseBasicParsing -TimeoutSec 300
+    Write-Log ("Download done: {0} ({1} bytes)" -f $dest, (Get-Item -LiteralPath $dest).Length)
   } catch {
-    Write-Info ("下载失败: {0}" -f $_.Exception.Message)
-    if (-not $Silent) { Start-Process 'https://npcap.com/#download' }
+    Write-Log ("Download failed: {0}" -f $_.Exception.Message) 'ERROR'
+    if (-not $Silent) { try { Start-Process 'https://npcap.com/#download' } catch {} }
     return $false
   }
 
-  Write-Info '正在安装 Npcap（可能弹出安装向导）…'
-  # /S = silent; /winpcap_mode=no keeps Npcap-only mode (recommended)
-  $p = Start-Process -FilePath $dest -ArgumentList '/S','/winpcap_mode=no' -Wait -PassThru
-  Write-Info ("Npcap 退出码: {0}" -f $p.ExitCode)
-  Remove-Item $dest -Force -ErrorAction SilentlyContinue
-  return (Test-NpcapInstalled)
+  Write-Log 'Installing Npcap (/S /winpcap_mode=no)...'
+  $p = Start-Process -FilePath $dest -ArgumentList '/S', '/winpcap_mode=no' -Wait -PassThru
+  Write-Log ("Npcap exit code: {0}" -f $p.ExitCode)
+  Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+  if (Test-NpcapInstalled) {
+    Write-Log 'Npcap installed.' 'OK'
+    return $true
+  }
+  Write-Log 'Npcap still not detected after install.' 'ERROR'
+  return $false
 }
 
-# --- main ---
-Ensure-Admin
+function Start-XSharkApp {
+  $candidates = @(
+    (Join-Path $Root 'XShark.exe'),
+    (Join-Path $Root 'Wireshark.exe')
+  )
+  $exe = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  if (-not $exe) {
+    Write-Log "XShark.exe / Wireshark.exe not found in $Root" 'ERROR'
+    $script:ExitCode = 2
+    return
+  }
 
-Write-Info '======== XShark 依赖检查 ========'
-$vcOk = $true
-$npcapOk = $true
-
-if (-not $SkipVcRedist) {
-  $vcOk = Install-VcRedist
-} else {
-  Write-Info '已跳过 VC 运行库检查。'
-}
-
-if (-not $SkipNpcap) {
-  $npcapOk = Install-Npcap
-} else {
-  Write-Info '已跳过 Npcap 检查。'
-}
-
-Write-Info '--------------------------------'
-if ($vcOk) { Write-Info '[OK] VC++ 运行库' } else { Write-Info '[!!] VC++ 运行库未就绪' }
-if ($npcapOk) { Write-Info '[OK] Npcap（抓包）' } else { Write-Info '[!!] Npcap 未就绪（可仅做离线打开 pcap）' }
-Write-Info '================================'
-
-if ($LaunchAfter) {
-  $exe = Join-Path $Root 'XShark.exe'
-  if (-not (Test-Path $exe)) { $exe = Join-Path $Root 'Wireshark.exe' }
-  if (Test-Path $exe) {
-    Start-Process -FilePath $exe -WorkingDirectory $Root
+  $appLog = Join-Path $Root 'xshark-app.log'
+  Write-Log "Starting: $exe"
+  Write-Log "App log: $appLog"
+  try {
+    $p = Start-Process -FilePath $exe -WorkingDirectory $Root -PassThru
+    Start-Sleep -Milliseconds 1200
+    if ($null -eq $p) {
+      Write-Log 'Start-Process returned null.' 'ERROR'
+      Set-Content -LiteralPath $appLog -Value 'Start-Process returned null' -Encoding UTF8
+      $script:ExitCode = 3
+      return
+    }
+    if ($p.HasExited) {
+      $code = [int]$p.ExitCode
+      Write-Log ("Process exited immediately, code={0}" -f $code) 'ERROR'
+      $msg = "XShark start failed, exit=$code`r`nexe=$exe`r`ncwd=$Root"
+      Set-Content -LiteralPath $appLog -Value $msg -Encoding UTF8
+      $script:ExitCode = if ($code -ne 0) { $code } else { 3 }
+    } else {
+      Write-Log ("Started OK, PID={0}" -f $p.Id) 'OK'
+      Set-Content -LiteralPath $appLog -Value ("started pid={0} exe={1}" -f $p.Id, $exe) -Encoding UTF8
+    }
+  } catch {
+    Write-Log ("Start failed: {0}" -f $_.Exception.Message) 'ERROR'
+    Set-Content -LiteralPath $appLog -Value $_.Exception.ToString() -Encoding UTF8
+    $script:ExitCode = 4
   }
 }
 
-if (-not $Silent) {
+function Wait-IfNeeded {
+  param([bool]$Failed)
+  if ($NoPause) { return }
+  if (-not $Failed -and $LaunchAfter) { return }
+  if (-not $Failed -and $Silent) { return }
   Write-Host ''
-  Write-Host '按任意键退出…'
-  $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+  Write-Host ("Log file: {0}" -f $LogFile)
+  if ($Failed) {
+    Write-Host 'Failed. Please send the log file for troubleshooting.' -ForegroundColor Yellow
+  }
+  Write-Host 'Press any key to exit...'
+  try {
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+  } catch {
+    Start-Sleep -Seconds 10
+  }
 }
 
-if ($vcOk -and $npcapOk) { exit 0 } else { exit 1 }
+try {
+  Write-Log '======== XShark dependency check start ========'
+  Write-Log ("Root={0}" -f $Root)
+  Write-Log ("User={0}; IsAdmin={1}; Silent={2}; LaunchAfter={3}" -f $env:USERNAME, (Test-IsAdmin), [bool]$Silent, [bool]$LaunchAfter)
+  Write-Log ("PSVersion={0}" -f $PSVersionTable.PSVersion)
+
+  $needVc = (-not $SkipVcRedist) -and -not (Test-VcRedistInstalled)
+  $needNpcap = (-not $SkipNpcap) -and -not (Test-NpcapInstalled)
+  Write-Log ("needVc={0}; needNpcap={1}" -f $needVc, $needNpcap)
+
+  if (($needVc -or $needNpcap) -and -not (Test-IsAdmin)) {
+    Write-Log 'Missing deps and not admin; requesting elevation...' 'WARN'
+    $argList = @(
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', $PSCommandPath,
+      '-LogFile', $LogFile
+    )
+    if ($Silent) { $argList += '-Silent' }
+    if ($SkipNpcap) { $argList += '-SkipNpcap' }
+    if ($SkipVcRedist) { $argList += '-SkipVcRedist' }
+    if ($LaunchAfter) { $argList += '-LaunchAfter' }
+    if ($NoPause) { $argList += '-NoPause' }
+
+    try {
+      $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    } catch {
+      Write-Log ("Elevation failed (UAC canceled?): {0}" -f $_.Exception.Message) 'ERROR'
+      $script:ExitCode = 5
+      Wait-IfNeeded -Failed $true
+      exit 5
+    }
+    $code = 0
+    if ($null -ne $p) { $code = [int]$p.ExitCode }
+    Write-Log ("Elevated process exit code={0}" -f $code)
+    $script:ExitCode = $code
+    exit $code
+  }
+
+  $vcOk = $true
+  $npcapOk = $true
+
+  if (-not $SkipVcRedist) {
+    if (Test-VcRedistInstalled) {
+      Write-Log 'VC++ runtime ready.' 'OK'
+    } else {
+      $vcOk = Install-VcRedist
+    }
+  } else {
+    Write-Log 'Skip VC++ check.'
+  }
+
+  if (-not $SkipNpcap) {
+    if (Test-NpcapInstalled) {
+      Write-Log 'Npcap ready.' 'OK'
+    } else {
+      $npcapOk = Install-Npcap
+    }
+  } else {
+    Write-Log 'Skip Npcap check.'
+  }
+
+  Write-Log '--------------------------------'
+  if ($vcOk) {
+    Write-Log '[OK] VC++ runtime' 'OK'
+  } else {
+    Write-Log '[!!] VC++ runtime missing' 'ERROR'
+    $script:ExitCode = 1
+  }
+  if ($npcapOk) {
+    Write-Log '[OK] Npcap' 'OK'
+  } else {
+    Write-Log '[!!] Npcap missing (offline pcap still works)' 'WARN'
+  }
+  Write-Log '======== dependency check end ========'
+
+  if ($LaunchAfter) {
+    Start-XSharkApp
+  }
+} catch {
+  $script:ExitCode = 10
+  Write-Log ("Unhandled exception: {0}" -f $_.Exception.Message) 'ERROR'
+  try { Add-Content -LiteralPath $LogFile -Value $_.ScriptStackTrace -Encoding UTF8 } catch {}
+  if (-not $Silent) {
+    Write-Host $_.Exception.ToString() -ForegroundColor Red
+  }
+} finally {
+  Wait-IfNeeded -Failed ($script:ExitCode -ne 0)
+}
+
+exit $script:ExitCode
