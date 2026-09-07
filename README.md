@@ -1,14 +1,32 @@
 # XShark（小鲨鱼）
 
+<p align="center">
+  <img src="docs/images/xshark-icon.png" alt="XShark" width="96" />
+</p>
+
 **XShark**（中文名：**小鲨鱼**）是基于 [Wireshark](https://www.wireshark.org/) 的开源网络协议分析定制版，面向**国密 TLCP（GM/T 0024）**与密评场景。
 
 - **产品版本**：V1.0.0  
 - **定位**：国密协议版（独立 `tlcp` 过滤，不与普通 TLS 混筛）  
 - **开源许可**：**GNU General Public License v2 or later**（与上游 Wireshark 一致，见根目录 [`COPYING`](COPYING)）  
-- **项目主页**：https://github.com/c01djc/xshark  
+- **项目主页**：https://github.com/c01djc/Xshark  
 
 > 本项目是 Wireshark 的衍生作品（fork / derived work），**不是** Wireshark Foundation 官方产品。  
 > Upstream：https://www.wireshark.org / https://gitlab.com/wireshark/wireshark
+
+## 界面预览
+
+### 欢迎页（XShark / 小鲨鱼）
+
+![XShark 欢迎页](docs/images/welcome-xshark.png)
+
+欢迎页采用国密主题红条品牌区，突出 **XShark** 产品名；默认隐藏官方推广侧栏，界面更干净。
+
+### TLCP 分析（独立 `tlcp` 过滤）
+
+![TLCP 国密流量分析](docs/images/analysis-tlcp.jpg)
+
+显示过滤器使用 `tlcp` 即可单独筛选国密握手与应用数据；详情树中可展开查看 **SM2-with-SM3** 等国密算法标识与 TLCP 记录层（版本 `0x0101`）。
 
 ## 开源协议（必读）
 
