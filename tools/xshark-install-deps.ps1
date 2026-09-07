@@ -142,13 +142,9 @@ function Install-Npcap {
 }
 
 function Start-XSharkApp {
-  $candidates = @(
-    (Join-Path $Root 'XShark.exe'),
-    (Join-Path $Root 'Wireshark.exe')
-  )
-  $exe = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-  if (-not $exe) {
-    Write-Log "XShark.exe / Wireshark.exe not found in $Root" 'ERROR'
+  $exe = Join-Path $Root 'XShark.exe'
+  if (-not (Test-Path -LiteralPath $exe)) {
+    Write-Log "XShark.exe not found in $Root" 'ERROR'
     $script:ExitCode = 2
     return
   }
